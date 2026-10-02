@@ -1,6 +1,6 @@
 {
   "name": "@spec0/cli",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Spec0 CLI — publish API specs, create mock servers, lint, and interact with the Spec0 platform",
   "main": "dist/index.js",
   "bin": {
@@ -55,7 +55,7 @@
   "homepage": "https://github.com/spec-0/cli#readme",
   "dependencies": {
     "@inquirer/prompts": "^8.5.2",
-    "@spec0/sdk-public-platform": "^1.3.1",
+    "@spec0/sdk-public-platform": "^1.10.0",
     "@stoplight/spectral-core": "^1.22.0",
     "@stoplight/spectral-parsers": "^1.0.0",
     "@stoplight/spectral-rulesets": "^1.22.1",

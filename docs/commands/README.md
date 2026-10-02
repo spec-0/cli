@@ -2,7 +2,7 @@
 
 > Auto-generated from the `spec0 commands --output=json` manifest. Do not edit by hand.
 
-`@spec0/cli` exposes 37 commands. Each page describes the flags and arguments for a single command.
+`@spec0/cli` exposes 38 commands. Each page describes the flags and arguments for a single command.
 
 | Command | Description |
 | --- | --- |
@@ -19,6 +19,7 @@
 | [`spec0 mock list`](mock-list.md) | List all mock servers in the org. |
 | [`spec0 mock show`](mock-show.md) | Show details for the mock server tied to <api> (name or UUID). |
 | [`spec0 mock url`](mock-url.md) | Print mock base URL for <api> (name or UUID). One line, pipe-friendly. |
+| [`spec0 mock refresh`](mock-refresh.md) | Rebuild the mock for <api> (name or UUID) against its current spec. URL and key are unchanged. |
 | [`spec0 mock delete`](mock-delete.md) | Delete the mock server tied to <api> (name or UUID). Requires --yes. |
 | [`spec0 team create`](team-create.md) | Create a new team in the org. Requires admin:team scope. |
 | [`spec0 team delete`](team-delete.md) | Delete a team. Refuses non-empty teams (delete child APIs/mocks first). |
