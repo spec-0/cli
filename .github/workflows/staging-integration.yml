@@ -47,7 +47,7 @@ jobs:
       # the SAT is scoped to. Falls back to "cli-smoke" in the test if unset.
       SPEC0_SMOKE_TEAM: ${{ vars.SPEC0_SMOKE_TEAM }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v6
         with:
