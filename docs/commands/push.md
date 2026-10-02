@@ -25,6 +25,7 @@ spec0 push [spec-file] [options]
 | `--name <name>` | API name (kebab-case). Defaults to spec filename if omitted. |  |
 | `--team <team>` | Team UUID or slug. Defaults to 'Unassigned APIs' if omitted. |  |
 | `--version <version>` | Version tag (e.g. 1.2.0). Defaults to info.version in spec. |  |
+| `--env <environment>` | Target environment (e.g. staging, production). Advances that environment to this published version. |  |
 | `--api-id <id>` | Existing API UUID to update (backward compat; prefer --name) |  |
 | `--semver` | Auto-compute next semver via oasdiff diff classification |  |
 | `--git-sha <sha>` | Git commit SHA (auto-detected if .git is present) |  |

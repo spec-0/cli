@@ -62,6 +62,26 @@ describe("formatPublishText", () => {
     });
     expect(out).toContain("Custom hint here");
   });
+
+  it("renders governance warnings when present", () => {
+    const out = formatPublishText({
+      ...base,
+      created: true,
+      governanceWarnings: [
+        { section: "naming", message: "operationId getThings is not camelCase" },
+        { section: "requiredFields", message: "GET /things is missing a description" },
+      ],
+    });
+    expect(out).toContain("2 governance warnings");
+    expect(out).toContain("[naming]");
+    expect(out).toContain("operationId getThings is not camelCase");
+    expect(out).toContain("[requiredFields]");
+  });
+
+  it("omits the governance warnings block when there are none", () => {
+    const out = formatPublishText({ ...base, created: true, governanceWarnings: [] });
+    expect(out).not.toContain("governance warning");
+  });
 });
 
 describe("formatLintText", () => {

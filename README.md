@@ -108,7 +108,6 @@ Every command supports `--output=text|json|yaml`. Progress / logs go to stderr, 
 | `spec0 auth login`  | Browser-based login; stores API key locally.                            |
 | `spec0 auth logout` | Clear the locally stored token.                                         |
 | `spec0 auth status` | Print the active org + key metadata.                                    |
-| `spec0 auth switch` | Switch the default org (multi-tenant setups).                           |
 | `spec0 whoami`      | One-line org + user summary.                                            |
 | `spec0 doctor`      | Print which source each setting resolved from (env / config / default). |
 

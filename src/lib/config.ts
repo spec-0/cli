@@ -59,6 +59,21 @@ export function setOrgConfig(orgId: string, config: OrgConfig): void {
   store.set(`orgs.${orgId}`, config);
 }
 
+/**
+ * Replace the entire org set with a single org and make it active, atomically.
+ *
+ * The CLI is single-org: `auth login` should always point every subsequent
+ * command at the org you just authenticated, with no stale entries left behind
+ * to silently win as the default. (A previous default org pointing at a dead
+ * `localhost` API base is exactly how a fresh login could appear to succeed yet
+ * every command still failed.) This clears any previously stored orgs, writes
+ * the one passed in, and sets it as the default in one step.
+ */
+export function replaceSoleOrg(orgId: string, config: OrgConfig): void {
+  store.set("orgs", { [orgId]: config });
+  store.set("defaultOrg", orgId);
+}
+
 export function setDefaultOrg(orgId: string): void {
   store.set("defaultOrg", orgId);
 }

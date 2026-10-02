@@ -26,6 +26,7 @@ spec0 sync-status [ref] [options]
 | `--api-id <uuid>` | API id (alternative to positional ref) |  |
 | `--org <uuid>` | Org id override |  |
 | `--output <format>` | Output format: text, json, or yaml (default: text) |  |
+| `--verbose` | Print HTTP request/response traces to stderr |  |
 
 ## Exit codes
 

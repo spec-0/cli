@@ -16,9 +16,11 @@ import { execSync } from "node:child_process";
 import chalk from "chalk";
 import { PublicSpecsService } from "@spec0/sdk-public-platform";
 import type { SyncStatusResponseV1 } from "@spec0/sdk-public-platform";
-import { configureSdkAuth, errorStatusCode, is401 } from "../lib/api-client.js";
+import { configureSdkAuth, errorStatusCode } from "../lib/api-client.js";
 import { requireOrgContext } from "../lib/auth-context.js";
 import { ExitCode } from "../lib/exit-codes.js";
+import { failApi } from "../lib/errors.js";
+import { setHttpTrace } from "../lib/http-trace.js";
 import { emit, fail, resolveOutputContext, type OutputOptions } from "../lib/output/index.js";
 import { resolveRef } from "../lib/ref-resolver.js";
 
@@ -32,6 +34,7 @@ export function registerSyncStatusCommand(program: Command) {
     .option("--api-id <uuid>", "API id (alternative to positional ref)")
     .option("--org <uuid>", "Org id override")
     .option("--output <format>", "Output format: text, json, or yaml (default: text)")
+    .option("--verbose", "Print HTTP request/response traces to stderr")
     .action(
       async (
         refArg: string | undefined,
@@ -43,6 +46,7 @@ export function registerSyncStatusCommand(program: Command) {
         },
       ) => {
         const outCtx = resolveOutputContext(opts);
+        setHttpTrace(outCtx.verbose);
 
         let authCtx;
         try {
@@ -78,18 +82,17 @@ export function registerSyncStatusCommand(program: Command) {
           });
           emit(outCtx, res, renderText);
         } catch (err) {
-          if (is401(err)) {
-            fail(outCtx, ExitCode.AUTH_MISSING, "Token invalid or expired.", {
-              hint: "Run 'spec0 auth login' or refresh SPEC0_TOKEN.",
-            });
-          }
           const status = errorStatusCode(err);
           if (status === 404) {
             fail(outCtx, ExitCode.NOT_FOUND, `API '${apiName ?? apiId}' not found.`, {
               hint: "Run 'spec0 api list' to see what exists in this org.",
             });
           }
-          fail(outCtx, ExitCode.GENERIC, `sync-status failed: ${(err as Error).message}`);
+          failApi(outCtx, err, {
+            action: "sync-status",
+            org: authCtx.orgName ?? authCtx.orgId,
+            apiUrl: authCtx.apiUrl,
+          });
         }
       },
     );

@@ -18,6 +18,7 @@ spec0 status [options]
 | `--org <uuid>` | Org id override |  |
 | `--output <format>` | Output format: text, json, or yaml (default: text) |  |
 | `--json` | Deprecated. Use --output=json instead. |  |
+| `--verbose` | Print HTTP request/response traces to stderr |  |
 
 ## Exit codes
 

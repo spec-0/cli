@@ -1,21 +1,21 @@
-# `spec0 auth switch`
+# `spec0 skill install`
 
 > Auto-generated from the `spec0 commands --output=json` manifest. Do not edit by hand.
 > Run `npm run docs` to regenerate after changing command flags.
 
-Switch default org
+Install the Spec0 skill into Claude Code (~/.claude/skills/spec0)
 
 ## Usage
 
 ```bash
-spec0 auth switch <org-name> [options]
+spec0 skill install [options]
 ```
 
-## Arguments
+## Flags
 
-| name | required | description |
+| flag | description | default |
 | --- | --- | --- |
-| `org-name` | yes |  |
+| `--scope <scope>` | Where to install: personal or project | `personal` |
 
 ## Exit codes
 

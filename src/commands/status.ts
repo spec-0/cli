@@ -10,9 +10,11 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { PublicMocksService, PublicOrgsService } from "@spec0/sdk-public-platform";
 import type { MockItemV1 } from "@spec0/sdk-public-platform";
-import { configureSdkAuth, is401 } from "../lib/api-client.js";
+import { configureSdkAuth } from "../lib/api-client.js";
 import { requireOrgContext } from "../lib/auth-context.js";
 import { ExitCode, exit } from "../lib/exit-codes.js";
+import { failApi } from "../lib/errors.js";
+import { setHttpTrace } from "../lib/http-trace.js";
 import { emit, resolveOutputContext, type OutputOptions } from "../lib/output/index.js";
 import { renderTable } from "../lib/output/table.js";
 import { warnDeprecated } from "../lib/deprecation.js";
@@ -34,6 +36,7 @@ export function registerStatusCommand(program: Command) {
     .option("--org <uuid>", "Org id override")
     .option("--output <format>", "Output format: text, json, or yaml (default: text)")
     .option("--json", "Deprecated. Use --output=json instead.")
+    .option("--verbose", "Print HTTP request/response traces to stderr")
     .action(async (opts: OutputOptions & { org?: string }) => {
       if (opts.json) {
         warnDeprecated({
@@ -43,6 +46,7 @@ export function registerStatusCommand(program: Command) {
         });
       }
       const ctx = resolveOutputContext(opts);
+      setHttpTrace(ctx.verbose);
 
       let authCtx;
       try {
@@ -65,10 +69,11 @@ export function registerStatusCommand(program: Command) {
 
         emit(ctx, payload, (data) => renderStatusText(data));
       } catch (err) {
-        if (is401(err)) {
-          exit(ExitCode.AUTH_MISSING, "Token invalid or expired. Run 'spec0 auth login'.");
-        }
-        exit(ExitCode.GENERIC, `Status failed: ${(err as Error).message}`);
+        failApi(ctx, err, {
+          action: "status",
+          org: authCtx.orgName ?? authCtx.orgId,
+          apiUrl: authCtx.apiUrl,
+        });
       }
     });
 }

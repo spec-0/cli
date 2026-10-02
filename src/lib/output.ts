@@ -46,6 +46,7 @@ export function formatPublishText(output: {
   versionUnchanged?: boolean;
   versionUnchangedHint?: string;
   created?: boolean;
+  governanceWarnings?: Array<{ section?: string; message?: string }>;
 }): string {
   const lines: string[] = [];
 
@@ -75,6 +76,17 @@ export function formatPublishText(output: {
             `Spec changed but version is still ${output.version}. Pass --semver to auto-bump.`,
         ),
     );
+  }
+
+  const warnings = output.governanceWarnings ?? [];
+  if (warnings.length > 0) {
+    lines.push("");
+    lines.push(
+      chalk.yellow(`⚠ ${warnings.length} governance warning${warnings.length === 1 ? "" : "s"}:`),
+    );
+    for (const w of warnings) {
+      lines.push(chalk.yellow(`  [${w.section ?? "policy"}] ${w.message ?? ""}`));
+    }
   }
 
   return lines.join("\n");

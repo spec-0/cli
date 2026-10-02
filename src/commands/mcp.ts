@@ -2,10 +2,13 @@
  * spec0 mcp url | test | install
  *
  * Helpers for pointing MCP clients (Cursor, Claude) at the Spec0 MCP server.
- * The server is a single Streamable HTTP endpoint; a bearer token is optional
- * (anonymous gets the public docs tools, a token unlocks org-scoped tools). The
- * canonical config references `${SPEC0_TOKEN}` so the secret stays in the
- * environment rather than being written into client config files.
+ * The server is a single Streamable HTTP endpoint that authenticates with the
+ * MCP OAuth flow: the protected-resource metadata points clients at Clerk, which
+ * dynamically registers a client and runs the browser authorization. So we
+ * register the server **without** an Authorization header — setting a static
+ * header makes clients (e.g. Claude Code) skip the OAuth flow entirely, and the
+ * org API key isn't a JWT the gateway would accept anyway. Anonymous connections
+ * get the public docs tools; signing in via the browser unlocks org-scoped ones.
  */
 
 import { Command } from "commander";
@@ -15,37 +18,21 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { getDefaultOrgId, getOrgConfig } from "../lib/config.js";
 import { resolvedPlatformMcpBaseUrl, resolvedPlatformMcpUrl } from "../lib/platform-defaults.js";
 import { ExitCode, exit, exitCodeForHttpStatus } from "../lib/exit-codes.js";
 
 /** Server key used under `mcpServers` in every client config we write. */
 const SERVER_KEY = "spec0";
 
-/** Bearer header value — references the env var so the token never lands on disk. */
-const AUTH_HEADER = "Bearer ${SPEC0_TOKEN}";
-
-/** Canonical client config block for the Spec0 MCP server. */
+/**
+ * Canonical client config block for the Spec0 MCP server. No Authorization
+ * header: the client performs the MCP OAuth flow (browser sign-in via Clerk)
+ * on first connect.
+ */
 function canonicalServerConfig(mcpUrl: string) {
   return {
     url: mcpUrl,
-    headers: { Authorization: AUTH_HEADER },
   };
-}
-
-/**
- * Exit early (code 3) unless the user is logged in or has env credentials.
- * Mirrors the sibling MCP commands: a default org from config, or SPEC0_TOKEN
- * with an org id, is enough.
- */
-function requireAuthOrExit(): void {
-  const orgId = process.env.SPEC0_ORG_ID ?? process.env.PLATFORM_ORG_ID ?? getDefaultOrgId();
-  const hasEnvToken = Boolean(process.env.SPEC0_TOKEN ?? process.env.PLATFORM_API_TOKEN);
-  const hasStoredOrg = Boolean(orgId && getOrgConfig(orgId));
-  if (!hasEnvToken && !hasStoredOrg) {
-    console.error(chalk.red("Not authenticated. Run 'spec0 auth login'."));
-    exit(ExitCode.AUTH_MISSING);
-  }
 }
 
 export function registerMcpCommands(program: Command) {
@@ -55,7 +42,6 @@ export function registerMcpCommands(program: Command) {
     .command("url")
     .description("Print MCP server config for Cursor/Claude")
     .action(async () => {
-      requireAuthOrExit();
       const mcpUrl = resolvedPlatformMcpUrl();
       console.log("Your MCP server URL:");
       console.log(`  ${mcpUrl}`);
@@ -66,7 +52,9 @@ export function registerMcpCommands(program: Command) {
       );
       console.log("");
       console.log(
-        chalk.dim("SPEC0_TOKEN must be set in the client's environment for auth to succeed."),
+        chalk.dim(
+          "No token needed here — your MCP client opens a browser to sign in (OAuth) on first connect.",
+        ),
       );
     });
 
@@ -74,7 +62,6 @@ export function registerMcpCommands(program: Command) {
     .command("test")
     .description("Verify MCP server is responding")
     .action(async () => {
-      requireAuthOrExit();
       const url = `${resolvedPlatformMcpBaseUrl()}/health`;
       try {
         const res = await got.get(url);
@@ -91,24 +78,39 @@ export function registerMcpCommands(program: Command) {
     .description("Install the Spec0 MCP server into Cursor and/or Claude")
     .option("--client <client>", "Target client: cursor, claude, or all", "all")
     .action(async (opts: { client: string }) => {
-      requireAuthOrExit();
+      runMcpInstall(opts.client);
 
-      const client = opts.client.toLowerCase();
-      if (!["cursor", "claude", "all"].includes(client)) {
-        console.error(
-          chalk.red(`Unknown client '${opts.client}'. Expected: cursor, claude, or all.`),
-        );
-        exit(ExitCode.USAGE);
-      }
-
-      const mcpUrl = resolvedPlatformMcpUrl();
-      if (client === "cursor" || client === "all") {
-        installCursor(mcpUrl);
-      }
-      if (client === "claude" || client === "all") {
-        installClaude(mcpUrl);
-      }
+      console.log("");
+      console.log(
+        chalk.dim(
+          "On first use your MCP client opens a browser to sign in (OAuth via Clerk). " +
+            "Anonymous access exposes the public docs tools; signing in unlocks your org's APIs.",
+        ),
+      );
     });
+}
+
+/**
+ * Write the Spec0 MCP server config into the requested client(s). Shared by
+ * `spec0 mcp install` and `spec0 setup` so the two stay in lockstep. Validates
+ * the client name (exits USAGE on an unknown one) and writes the canonical
+ * header-less config. Does not print the OAuth note — callers add their own
+ * surrounding output.
+ */
+export function runMcpInstall(clientOpt: string): void {
+  const client = clientOpt.toLowerCase();
+  if (!["cursor", "claude", "all"].includes(client)) {
+    console.error(chalk.red(`Unknown client '${clientOpt}'. Expected: cursor, claude, or all.`));
+    exit(ExitCode.USAGE);
+  }
+
+  const mcpUrl = resolvedPlatformMcpUrl();
+  if (client === "cursor" || client === "all") {
+    installCursor(mcpUrl);
+  }
+  if (client === "claude" || client === "all") {
+    installClaude(mcpUrl);
+  }
 }
 
 /**
@@ -145,27 +147,17 @@ function installCursor(mcpUrl: string): void {
 
 /**
  * Register the server with Claude via `claude mcp add`. The flag form follows the
- * current Claude CLI: all options precede the server name, the Streamable HTTP
- * transport is selected explicitly (`--transport http`), and the bearer header is
- * passed verbatim so the `${SPEC0_TOKEN}` placeholder is expanded by the client at
- * connect time.
+ * current Claude CLI: options precede the server name and the Streamable HTTP
+ * transport is selected explicitly (`--transport http`). No Authorization header
+ * is passed — that lets the client run the MCP OAuth flow on connect.
  *
  * If the `claude` binary isn't on PATH (or the invocation fails for any reason)
  * we don't hard-fail: we print the exact command plus the manual JSON so the user
  * can finish by hand.
  */
 function installClaude(mcpUrl: string): void {
-  const args = [
-    "mcp",
-    "add",
-    "--transport",
-    "http",
-    SERVER_KEY,
-    mcpUrl,
-    "--header",
-    `Authorization: ${AUTH_HEADER}`,
-  ];
-  const printableCommand = `claude mcp add --transport http ${SERVER_KEY} ${mcpUrl} --header "Authorization: ${AUTH_HEADER}"`;
+  const args = ["mcp", "add", "--transport", "http", SERVER_KEY, mcpUrl];
+  const printableCommand = `claude mcp add --transport http ${SERVER_KEY} ${mcpUrl}`;
 
   let result: ReturnType<typeof spawnSync> | undefined;
   try {

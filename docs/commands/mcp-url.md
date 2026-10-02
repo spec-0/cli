@@ -3,7 +3,7 @@
 > Auto-generated from the `spec0 commands --output=json` manifest. Do not edit by hand.
 > Run `npm run docs` to regenerate after changing command flags.
 
-Print MCP server URL for Cursor/Claude config
+Print MCP server config for Cursor/Claude
 
 ## Usage
 

@@ -24,6 +24,7 @@ spec0 team delete <teamId> [options]
 | `--yes` | Skip the confirmation prompt (required for non-interactive use) |  |
 | `--org <uuid>` | Org id override |  |
 | `--output <format>` | Output format: text, json, or yaml (default: text) |  |
+| `--verbose` | Print HTTP request/response traces to stderr |  |
 
 ## Exit codes
 

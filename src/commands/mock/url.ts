@@ -11,16 +11,23 @@
 
 import { Command } from "commander";
 import { PublicMocksService } from "@spec0/sdk-public-platform";
-import { configureSdkAuth, is401 } from "../../lib/api-client.js";
+import { configureSdkAuth } from "../../lib/api-client.js";
 import { requireOrgContext } from "../../lib/auth-context.js";
 import { ExitCode, exit } from "../../lib/exit-codes.js";
+import { failApi } from "../../lib/errors.js";
+import { setHttpTrace } from "../../lib/http-trace.js";
+import { resolveOutputContext } from "../../lib/output/index.js";
 
 export function registerMockUrlCommand(mock: Command) {
   mock
     .command("url <api>")
     .description("Print mock base URL for <api> (name or UUID). One line, pipe-friendly.")
     .option("--org <uuid>", "Org id override")
-    .action(async (api: string, opts: { org?: string }) => {
+    .option("--verbose", "Print HTTP request/response traces to stderr")
+    .action(async (api: string, opts: { org?: string; verbose?: boolean }) => {
+      setHttpTrace(!!opts.verbose);
+      const outCtx = resolveOutputContext(opts);
+
       let authCtx;
       try {
         authCtx = requireOrgContext(opts.org);
@@ -41,10 +48,11 @@ export function registerMockUrlCommand(mock: Command) {
         }
         process.stdout.write(`${authCtx.apiUrl}${hit.mockBaseUrl ?? ""}\n`);
       } catch (err) {
-        if (is401(err)) {
-          exit(ExitCode.AUTH_MISSING, "Token invalid or expired. Run 'spec0 auth login'.");
-        }
-        exit(ExitCode.GENERIC, `mock url failed: ${(err as Error).message}`);
+        failApi(outCtx, err, {
+          action: "mock url",
+          org: authCtx.orgName ?? authCtx.orgId,
+          apiUrl: authCtx.apiUrl,
+        });
       }
     });
 }

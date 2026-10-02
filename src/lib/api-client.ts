@@ -6,12 +6,46 @@ import got, { type Options } from "got";
 import { ApiError, OpenAPI } from "@spec0/sdk-public-platform";
 import type { OrgConfig } from "./config.js";
 import type { ResolvedOrgContext } from "./auth-context.js";
+import { httpTimeoutMs, httpTraceEnabled, traceRequest, traceResponse } from "./http-trace.js";
 
 export interface ApiClientOptions {
   apiUrl?: string;
   apiKey?: string;
   orgId?: string;
 }
+
+/**
+ * Shared `got` instance with `--verbose` tracing hooks. All raw HTTP goes
+ * through this so a single `setHttpTrace(true)` makes every request visible on
+ * stderr (the SDK is traced separately via the global `fetch` wrapper).
+ */
+const http = got.extend({
+  // Fail fast on a hung connection rather than blocking the CLI forever.
+  // got's TimeoutError carries code ETIMEDOUT, which classifies to NETWORK_ERROR.
+  timeout: { request: httpTimeoutMs() },
+  hooks: {
+    beforeRequest: [
+      (options) => {
+        if (options.url) traceRequest(options.method, options.url.toString());
+      },
+    ],
+    afterResponse: [
+      (response) => {
+        traceResponse(response.statusCode, response.requestUrl.toString());
+        return response;
+      },
+    ],
+    beforeError: [
+      (error) => {
+        if (httpTraceEnabled()) {
+          const url = (error.response?.requestUrl ?? error.options?.url)?.toString() ?? "";
+          traceResponse(error.response?.statusCode ?? 0, url);
+        }
+        return error;
+      },
+    ],
+  },
+});
 
 function orgHeaders(orgId: string, extra?: Record<string, string>): Record<string, string> {
   return { "X-Org-Id": orgId, ...extra };
@@ -27,7 +61,7 @@ export function createApiClient(org: OrgConfig) {
 
   return {
     async get<T = unknown>(path: string, options?: Options): Promise<T> {
-      const res = await got.get(`${baseUrl}${path}`, {
+      const res = await http.get(`${baseUrl}${path}`, {
         ...options,
         headers: { ...headers, ...options?.headers },
         responseType: "json",
@@ -36,7 +70,7 @@ export function createApiClient(org: OrgConfig) {
     },
 
     async post<T = unknown>(path: string, body?: unknown, options?: Options): Promise<T> {
-      const res = await got.post(`${baseUrl}${path}`, {
+      const res = await http.post(`${baseUrl}${path}`, {
         ...options,
         json: body,
         headers: { ...headers, ...options?.headers },
@@ -46,7 +80,7 @@ export function createApiClient(org: OrgConfig) {
     },
 
     async put<T = unknown>(path: string, body?: unknown, options?: Options): Promise<T> {
-      const res = await got.put(`${baseUrl}${path}`, {
+      const res = await http.put(`${baseUrl}${path}`, {
         ...options,
         json: body,
         headers: { ...headers, ...options?.headers },
@@ -56,7 +90,7 @@ export function createApiClient(org: OrgConfig) {
     },
 
     async delete<T = unknown>(path: string, options?: Options): Promise<T> {
-      const res = await got.delete(`${baseUrl}${path}`, {
+      const res = await http.delete(`${baseUrl}${path}`, {
         ...options,
         headers: { ...headers, ...options?.headers },
         responseType: "json",
@@ -80,14 +114,14 @@ export function createOrgApiClient(ctx: ResolvedOrgContext) {
   return {
     baseUrl,
     async getJson<T = unknown>(path: string, headers?: Record<string, string>): Promise<T> {
-      const res = await got.get(`${baseUrl}${path}`, {
+      const res = await http.get(`${baseUrl}${path}`, {
         headers: { ...baseHeaders, Accept: "application/json", ...headers },
         responseType: "json",
       });
       return res.body as T;
     },
     async getText(path: string, headers?: Record<string, string>): Promise<string> {
-      const res = await got.get(`${baseUrl}${path}`, {
+      const res = await http.get(`${baseUrl}${path}`, {
         headers: {
           ...baseHeaders,
           Accept: "application/yaml, application/json, text/plain, */*",
@@ -101,7 +135,7 @@ export function createOrgApiClient(ctx: ResolvedOrgContext) {
       body: unknown,
       headers?: Record<string, string>,
     ): Promise<T> {
-      const res = await got.post(`${baseUrl}${path}`, {
+      const res = await http.post(`${baseUrl}${path}`, {
         json: body,
         headers: {
           ...baseHeaders,
@@ -118,7 +152,7 @@ export function createOrgApiClient(ctx: ResolvedOrgContext) {
       body: unknown,
       headers?: Record<string, string>,
     ): Promise<T> {
-      const res = await got.put(`${baseUrl}${path}`, {
+      const res = await http.put(`${baseUrl}${path}`, {
         json: body,
         headers: {
           ...baseHeaders,
@@ -140,7 +174,7 @@ export function createOrgApiClient(ctx: ResolvedOrgContext) {
         const blob = new Blob([content], { type: "application/octet-stream" });
         form.append(name, blob, filename);
       }
-      const res = await got.post(`${baseUrl}${path}`, {
+      const res = await http.post(`${baseUrl}${path}`, {
         body: form,
         headers: { ...baseHeaders, Accept: "application/json", ...headers },
         responseType: "json",
@@ -148,7 +182,7 @@ export function createOrgApiClient(ctx: ResolvedOrgContext) {
       return res.body as T;
     },
     async deleteJson<T = unknown>(path: string, headers?: Record<string, string>): Promise<T> {
-      const res = await got.delete(`${baseUrl}${path}`, {
+      const res = await http.delete(`${baseUrl}${path}`, {
         headers: { ...baseHeaders, Accept: "application/json", ...headers },
         responseType: "json",
       });
@@ -188,6 +222,25 @@ export function configureSdkAuth(ctx: ResolvedOrgContext): void {
 export function errorStatusCode(err: unknown): number | undefined {
   if (err instanceof ApiError) return err.status;
   return (err as { response?: { statusCode?: number } })?.response?.statusCode;
+}
+
+/**
+ * Extract the request method + final URL from an error, for diagnostics.
+ * Handles both SDK `ApiError` (`err.url` / `err.request.method`) and `got`
+ * errors (`err.response.requestUrl` / `err.options.method`). Returns
+ * `undefined` fields when nothing is available.
+ */
+export function errorRequestInfo(err: unknown): { method?: string; url?: string } {
+  if (err instanceof ApiError) {
+    return { method: err.request?.method, url: err.url };
+  }
+  const e = err as {
+    options?: { method?: string };
+    response?: { requestUrl?: unknown };
+    request?: { requestUrl?: unknown };
+  };
+  const rawUrl = e?.response?.requestUrl ?? e?.request?.requestUrl;
+  return { method: e?.options?.method, url: rawUrl ? String(rawUrl) : undefined };
 }
 
 export function is401(err: unknown): boolean {

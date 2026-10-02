@@ -24,6 +24,7 @@ spec0 pull <ref> [options]
 | `-o, --output <file>` | Write to file instead of stdout |  |
 | `--public` | Reserved for public registry (same endpoint when API is public) |  |
 | `--org <uuid>` | Auth org id (defaults to logged-in org) |  |
+| `--verbose` | Print HTTP request/response traces to stderr |  |
 
 ## Exit codes
 

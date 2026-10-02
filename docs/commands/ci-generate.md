@@ -27,6 +27,7 @@ spec0 ci generate <provider> [options]
 | `--write` | Write the workflow to its suggested path (default: print to stdout) |  |
 | `--org <uuid>` | Org id override |  |
 | `--output <format>` | Output format for metadata: text, json, yaml (default: text) |  |
+| `--verbose` | Print HTTP request/response traces to stderr |  |
 
 ## Exit codes
 

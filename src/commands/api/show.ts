@@ -16,10 +16,11 @@ import {
   createOrgApiClient,
   is401,
   errorStatusCode,
-  extractErrorMessage,
 } from "../../lib/api-client.js";
 import { requireOrgContext } from "../../lib/auth-context.js";
-import { ExitCode, exitCodeForHttpStatus } from "../../lib/exit-codes.js";
+import { ExitCode } from "../../lib/exit-codes.js";
+import { failApi } from "../../lib/errors.js";
+import { setHttpTrace } from "../../lib/http-trace.js";
 import {
   emit,
   fail,
@@ -59,8 +60,10 @@ export function registerApiShowCommand(api: Command) {
     .description("Show metadata for a single API (no spec body).")
     .option("--org <uuid>", "Org id override")
     .option("--output <format>", "Output format: text, json, or yaml (default: text)")
+    .option("--verbose", "Print HTTP request/response traces to stderr")
     .action(async (ref: string, opts: OutputOptions & { org?: string }) => {
       const outCtx = resolveOutputContext(opts);
+      setHttpTrace(outCtx.verbose);
 
       let authCtx;
       try {
@@ -127,12 +130,11 @@ export function registerApiShowCommand(api: Command) {
             );
           }
         } else {
-          const msg = extractErrorMessage(err) ?? (err as Error).message;
-          fail(
-            outCtx,
-            status ? exitCodeForHttpStatus(status) : ExitCode.GENERIC,
-            `api show failed: ${msg}`,
-          );
+          failApi(outCtx, err, {
+            action: "api show",
+            org: authCtx.orgName ?? authCtx.orgId,
+            apiUrl: authCtx.apiUrl,
+          });
         }
       }
 

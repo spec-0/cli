@@ -12,9 +12,11 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { PublicRegistryService, PublicSpecsService } from "@spec0/sdk-public-platform";
-import { configureSdkAuth, is401 } from "../../lib/api-client.js";
+import { configureSdkAuth } from "../../lib/api-client.js";
 import { requireOrgContext } from "../../lib/auth-context.js";
 import { ExitCode } from "../../lib/exit-codes.js";
+import { failApi } from "../../lib/errors.js";
+import { setHttpTrace } from "../../lib/http-trace.js";
 import {
   emit,
   fail,
@@ -41,9 +43,11 @@ export function registerApiChangelogCommand(api: Command) {
     .option("--to <tag>", "Later version tag (default: latest published)")
     .option("--org <uuid>", "Org id override")
     .option("--output <format>", "Output format: text, json, markdown, or yaml (default: text)")
+    .option("--verbose", "Print HTTP request/response traces to stderr")
     .action(
       async (ref: string, opts: OutputOptions & { from?: string; to?: string; org?: string }) => {
         const outCtx = resolveOutputContext(opts);
+        setHttpTrace(outCtx.verbose);
 
         let authCtx;
         try {
@@ -93,17 +97,16 @@ export function registerApiChangelogCommand(api: Command) {
           }
           emit(outCtx, payload, renderChangelogText);
         } catch (err) {
-          if (is401(err)) {
-            fail(outCtx, ExitCode.AUTH_MISSING, "Token invalid or expired.", {
-              hint: "Run 'spec0 auth login' or refresh SPEC0_TOKEN.",
-            });
-          }
           if ((err as Error).message?.includes("No API named")) {
             fail(outCtx, ExitCode.NOT_FOUND, (err as Error).message, {
               hint: "Run 'spec0 api list' to see what exists in this org.",
             });
           }
-          fail(outCtx, ExitCode.GENERIC, `api changelog failed: ${(err as Error).message}`);
+          failApi(outCtx, err, {
+            action: "api changelog",
+            org: authCtx.orgName ?? authCtx.orgId,
+            apiUrl: authCtx.apiUrl,
+          });
         }
       },
     );

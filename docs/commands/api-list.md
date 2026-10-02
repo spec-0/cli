@@ -19,6 +19,7 @@ spec0 api list [options]
 | `--search <query>` | Filter by name substring (case-insensitive) |  |
 | `--org <uuid>` | Org id override |  |
 | `--output <format>` | Output format: text, json, or yaml (default: text) |  |
+| `--verbose` | Print HTTP request/response traces to stderr |  |
 
 ## Exit codes
 

@@ -25,6 +25,8 @@ import { registerDiffCommand } from "./commands/diff.js";
 import { registerLogCommand } from "./commands/log.js";
 import { registerStatusCommand } from "./commands/status.js";
 import { registerMcpCommands } from "./commands/mcp.js";
+import { registerSkillCommands } from "./commands/skill.js";
+import { registerSetupCommand } from "./commands/setup.js";
 import { registerVersionCommand } from "./commands/version.js";
 import { registerApiCommands } from "./commands/api/index.js";
 import { registerDoctorCommand } from "./commands/doctor.js";
@@ -33,6 +35,11 @@ import { registerCiCommands } from "./commands/ci/index.js";
 import { registerCommandsCommand } from "./commands/commands.js";
 import { getCliVersion } from "./lib/version.js";
 import { notifyUpdateIfAvailable } from "./lib/update-check.js";
+import { installHttpInstrumentation } from "./lib/http-trace.js";
+
+// Apply the default request timeout (and wire verbose tracing) to every SDK
+// call by wrapping the global fetch once, before any command runs.
+installHttpInstrumentation();
 
 const program = new Command();
 
@@ -64,6 +71,8 @@ registerDiffCommand(program);
 registerLogCommand(program);
 registerStatusCommand(program);
 registerMcpCommands(program);
+registerSkillCommands(program);
+registerSetupCommand(program);
 registerApiCommands(program);
 registerDoctorCommand(program);
 registerSyncStatusCommand(program);

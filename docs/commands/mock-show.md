@@ -23,6 +23,7 @@ spec0 mock show <api> [options]
 | --- | --- | --- |
 | `--org <uuid>` | Org id override |  |
 | `--output <format>` | Output format: text, json, or yaml (default: text) |  |
+| `--verbose` | Print HTTP request/response traces to stderr |  |
 
 ## Exit codes
 

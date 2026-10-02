@@ -25,6 +25,7 @@ spec0 log <api-ref> [options]
 | `--org-slug <slug>` | Organisation slug/name for registry path when api-ref has no slash (default: name from spec0 auth config) |  |
 | `--output <format>` | Output format: text, json, or yaml (default: text) |  |
 | `--json` | Deprecated. Use --output=json instead. |  |
+| `--verbose` | Print HTTP request/response traces to stderr |  |
 
 ## Exit codes
 

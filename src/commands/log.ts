@@ -9,11 +9,13 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { PublicRegistryService } from "@spec0/sdk-public-platform";
 import type { SpecVersionListItemV1 } from "@spec0/sdk-public-platform";
-import { configureSdkAuth, is401 } from "../lib/api-client.js";
+import { configureSdkAuth } from "../lib/api-client.js";
 import { requireOrgContext } from "../lib/auth-context.js";
 import { getDefaultOrgId, getOrgConfig } from "../lib/config.js";
 import { parseRegistryRef } from "../lib/registry-ref.js";
 import { ExitCode, exit } from "../lib/exit-codes.js";
+import { failApi } from "../lib/errors.js";
+import { setHttpTrace } from "../lib/http-trace.js";
 import { emit, resolveOutputContext, type OutputOptions } from "../lib/output/index.js";
 import { renderTable } from "../lib/output/table.js";
 import { warnDeprecated } from "../lib/deprecation.js";
@@ -31,6 +33,7 @@ export function registerLogCommand(program: Command) {
     )
     .option("--output <format>", "Output format: text, json, or yaml (default: text)")
     .option("--json", "Deprecated. Use --output=json instead.")
+    .option("--verbose", "Print HTTP request/response traces to stderr")
     .action(async (apiRef: string, opts: OutputOptions & { org?: string; orgSlug?: string }) => {
       if (opts.json) {
         warnDeprecated({
@@ -40,6 +43,7 @@ export function registerLogCommand(program: Command) {
         });
       }
       const outCtx = resolveOutputContext(opts);
+      setHttpTrace(outCtx.verbose);
 
       let orgSlug: string;
       let apiName: string;
@@ -81,10 +85,11 @@ export function registerLogCommand(program: Command) {
         });
         emit(outCtx, rows, (data) => renderLogText(data, orgSlug, apiName));
       } catch (err) {
-        if (is401(err)) {
-          exit(ExitCode.AUTH_MISSING, "Token invalid or expired. Run 'spec0 auth login'.");
-        }
-        exit(ExitCode.GENERIC, `Log failed: ${(err as Error).message}`);
+        failApi(outCtx, err, {
+          action: "log",
+          org: authCtx.orgName ?? authCtx.orgId,
+          apiUrl: authCtx.apiUrl,
+        });
       }
     });
 }

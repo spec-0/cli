@@ -7,9 +7,11 @@
 import { Command } from "commander";
 import { PublicTeamsService } from "@spec0/sdk-public-platform";
 import type { TeamV1 } from "@spec0/sdk-public-platform";
-import { configureSdkAuth, errorStatusCode, is401 } from "../../lib/api-client.js";
+import { configureSdkAuth } from "../../lib/api-client.js";
 import { requireOrgContext } from "../../lib/auth-context.js";
-import { ExitCode, exitCodeForHttpStatus } from "../../lib/exit-codes.js";
+import { ExitCode } from "../../lib/exit-codes.js";
+import { failApi } from "../../lib/errors.js";
+import { setHttpTrace } from "../../lib/http-trace.js";
 import { emit, fail, resolveOutputContext, type OutputOptions } from "../../lib/output/index.js";
 import { renderTable } from "../../lib/output/table.js";
 
@@ -19,8 +21,10 @@ export function registerTeamListCommand(team: Command) {
     .description("List all teams in the org.")
     .option("--org <uuid>", "Org id override")
     .option("--output <format>", "Output format: text, json, or yaml (default: text)")
+    .option("--verbose", "Print HTTP request/response traces to stderr")
     .action(async (opts: OutputOptions & { org?: string }) => {
       const outCtx = resolveOutputContext(opts);
+      setHttpTrace(outCtx.verbose);
 
       let authCtx;
       try {
@@ -42,17 +46,11 @@ export function registerTeamListCommand(team: Command) {
           ]),
         );
       } catch (err) {
-        if (is401(err)) {
-          fail(outCtx, ExitCode.AUTH_MISSING, "Token invalid or expired.", {
-            hint: "Run 'spec0 auth login' or refresh SPEC0_TOKEN.",
-          });
-        }
-        const status = errorStatusCode(err);
-        fail(
-          outCtx,
-          status ? exitCodeForHttpStatus(status) : ExitCode.GENERIC,
-          `team list failed: ${(err as Error).message}`,
-        );
+        failApi(outCtx, err, {
+          action: "team list",
+          org: authCtx.orgName ?? authCtx.orgId,
+          apiUrl: authCtx.apiUrl,
+        });
       }
     });
 }

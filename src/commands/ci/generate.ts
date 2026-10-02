@@ -12,9 +12,11 @@ import { writeFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import chalk from "chalk";
 import { PublicCiService } from "@spec0/sdk-public-platform";
-import { configureSdkAuth, is401 } from "../../lib/api-client.js";
+import { configureSdkAuth } from "../../lib/api-client.js";
 import { requireOrgContext } from "../../lib/auth-context.js";
 import { ExitCode } from "../../lib/exit-codes.js";
+import { failApi } from "../../lib/errors.js";
+import { setHttpTrace } from "../../lib/http-trace.js";
 import {
   emit,
   fail,
@@ -33,6 +35,7 @@ export function registerCiGenerateCommand(ci: Command) {
     .option("--write", "Write the workflow to its suggested path (default: print to stdout)")
     .option("--org <uuid>", "Org id override")
     .option("--output <format>", "Output format for metadata: text, json, yaml (default: text)")
+    .option("--verbose", "Print HTTP request/response traces to stderr")
     .action(
       async (
         provider: string,
@@ -45,6 +48,7 @@ export function registerCiGenerateCommand(ci: Command) {
         },
       ) => {
         const outCtx = resolveOutputContext(opts);
+        setHttpTrace(outCtx.verbose);
 
         if (provider.toLowerCase() !== "github") {
           fail(outCtx, ExitCode.USAGE, `Unsupported CI provider '${provider}'.`, {
@@ -87,12 +91,11 @@ export function registerCiGenerateCommand(ci: Command) {
             process.stdout.write(res.workflowYaml ?? "");
           }
         } catch (err) {
-          if (is401(err)) {
-            fail(outCtx, ExitCode.AUTH_MISSING, "Token invalid or expired.", {
-              hint: "Run 'spec0 auth login' or refresh SPEC0_TOKEN.",
-            });
-          }
-          fail(outCtx, ExitCode.GENERIC, `ci generate failed: ${(err as Error).message}`);
+          failApi(outCtx, err, {
+            action: "ci generate",
+            org: authCtx.orgName ?? authCtx.orgId,
+            apiUrl: authCtx.apiUrl,
+          });
         }
       },
     );

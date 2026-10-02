@@ -22,6 +22,7 @@ spec0 mock url <api> [options]
 | flag | description | default |
 | --- | --- | --- |
 | `--org <uuid>` | Org id override |  |
+| `--verbose` | Print HTTP request/response traces to stderr |  |
 
 ## Exit codes
 

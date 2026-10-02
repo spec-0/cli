@@ -8,9 +8,12 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { PublicRegistryService } from "@spec0/sdk-public-platform";
-import { configureSdkAuth, errorStatusCode, is401 } from "../lib/api-client.js";
+import { configureSdkAuth } from "../lib/api-client.js";
 import { requireOrgContext } from "../lib/auth-context.js";
-import { ExitCode, exit, exitCodeForHttpStatus } from "../lib/exit-codes.js";
+import { ExitCode, exit } from "../lib/exit-codes.js";
+import { failApi } from "../lib/errors.js";
+import { setHttpTrace } from "../lib/http-trace.js";
+import { resolveOutputContext } from "../lib/output/index.js";
 
 export function registerSearchCommand(program: Command) {
   program
@@ -19,8 +22,15 @@ export function registerSearchCommand(program: Command) {
     .option("--org <uuid>", "Org id override")
     .option("--public", "Reserved — public registry search uses same backend when enabled")
     .option("--max-results <n>", "Max results", "10")
+    .option("--verbose", "Print HTTP request/response traces to stderr")
     .action(
-      async (query: string, opts: { org?: string; public?: boolean; maxResults?: string }) => {
+      async (
+        query: string,
+        opts: { org?: string; public?: boolean; maxResults?: string; verbose?: boolean },
+      ) => {
+        setHttpTrace(!!opts.verbose);
+        const outCtx = resolveOutputContext(opts);
+
         let ctx;
         try {
           ctx = requireOrgContext(opts.org);
@@ -60,13 +70,11 @@ export function registerSearchCommand(program: Command) {
               console.log(chalk.gray(`     ${body.slice(0, 200)}${body.length > 200 ? "…" : ""}`));
           }
         } catch (err) {
-          if (is401(err)) {
-            console.error(chalk.red("Token invalid. Run 'spec0 auth login'."));
-            exit(ExitCode.AUTH_MISSING);
-          }
-          const status = errorStatusCode(err);
-          console.error(chalk.red(`Search failed: ${(err as Error).message}`));
-          exit(status ? exitCodeForHttpStatus(status) : ExitCode.GENERIC);
+          failApi(outCtx, err, {
+            action: "search",
+            org: ctx.orgName ?? ctx.orgId,
+            apiUrl: ctx.apiUrl,
+          });
         }
       },
     );

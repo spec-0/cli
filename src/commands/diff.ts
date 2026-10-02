@@ -8,9 +8,8 @@
 
 import { Command } from "commander";
 import chalk from "chalk";
-import { existsSync, readFileSync } from "fs";
 import { createTwoFilesPatch } from "diff";
-import { PublicRegistryService, PublicSpecsService } from "@spec0/sdk-public-platform";
+import { PublicSpecsService } from "@spec0/sdk-public-platform";
 import {
   configureSdkAuth,
   errorStatusCode,
@@ -18,30 +17,8 @@ import {
   is401,
 } from "../lib/api-client.js";
 import { requireOrgContext, type ResolvedOrgContext } from "../lib/auth-context.js";
-import { resolveRef } from "../lib/ref-resolver.js";
+import { loadSpecContent } from "../lib/spec-source.js";
 import { ExitCode, exit, exitCodeForHttpStatus } from "../lib/exit-codes.js";
-
-async function loadSpecContent(token: string, ctx: ResolvedOrgContext): Promise<string> {
-  const trimmed = token.trim();
-  if (existsSync(trimmed)) {
-    return readFileSync(trimmed, "utf-8");
-  }
-  const parsed = resolveRef(trimmed);
-  if (parsed.kind !== "name" || !parsed.org) {
-    throw new Error(`Diff requires '<org>/<api>[@<tag>]' or a local file. Got '${trimmed}'.`);
-  }
-  configureSdkAuth(ctx);
-  return parsed.tag
-    ? PublicRegistryService.getPublicSpecByTag({
-        orgSlug: parsed.org,
-        apiName: parsed.api,
-        tag: parsed.tag,
-      })
-    : PublicRegistryService.getLatestPublicSpec({
-        orgSlug: parsed.org,
-        apiName: parsed.api,
-      });
-}
 
 async function breakingChangesViaBackend(
   ctx: ResolvedOrgContext,

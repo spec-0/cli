@@ -24,6 +24,7 @@ spec0 team create <name> [options]
 | `--description <text>` | Optional team description |  |
 | `--org <uuid>` | Org id override |  |
 | `--output <format>` | Output format: text, json, or yaml (default: text) |  |
+| `--verbose` | Print HTTP request/response traces to stderr |  |
 
 ## Exit codes
 

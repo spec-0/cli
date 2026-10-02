@@ -8,14 +8,11 @@
 import { Command } from "commander";
 import { PublicTeamsService } from "@spec0/sdk-public-platform";
 import type { TeamV1 } from "@spec0/sdk-public-platform";
-import {
-  configureSdkAuth,
-  errorStatusCode,
-  is401,
-  extractErrorMessage,
-} from "../../lib/api-client.js";
+import { configureSdkAuth } from "../../lib/api-client.js";
 import { requireOrgContext } from "../../lib/auth-context.js";
-import { ExitCode, exitCodeForHttpStatus } from "../../lib/exit-codes.js";
+import { ExitCode } from "../../lib/exit-codes.js";
+import { failApi } from "../../lib/errors.js";
+import { setHttpTrace } from "../../lib/http-trace.js";
 import { emit, fail, resolveOutputContext, type OutputOptions } from "../../lib/output/index.js";
 
 export function registerTeamCreateCommand(team: Command) {
@@ -25,8 +22,10 @@ export function registerTeamCreateCommand(team: Command) {
     .option("--description <text>", "Optional team description")
     .option("--org <uuid>", "Org id override")
     .option("--output <format>", "Output format: text, json, or yaml (default: text)")
+    .option("--verbose", "Print HTTP request/response traces to stderr")
     .action(async (name: string, opts: OutputOptions & { description?: string; org?: string }) => {
       const outCtx = resolveOutputContext(opts);
+      setHttpTrace(outCtx.verbose);
 
       const trimmed = name.trim();
       if (!trimmed) {
@@ -52,18 +51,11 @@ export function registerTeamCreateCommand(team: Command) {
         })) as TeamV1;
         emit(outCtx, created, (t) => `Created team: ${t.name} (${t.id})`);
       } catch (err) {
-        if (is401(err)) {
-          fail(outCtx, ExitCode.AUTH_MISSING, "Token invalid or expired.", {
-            hint: "Run 'spec0 auth login' or refresh SPEC0_TOKEN.",
-          });
-        }
-        const status = errorStatusCode(err);
-        const msg = extractErrorMessage(err) ?? (err as Error).message;
-        fail(
-          outCtx,
-          status ? exitCodeForHttpStatus(status) : ExitCode.GENERIC,
-          `team create failed: ${msg}`,
-        );
+        failApi(outCtx, err, {
+          action: "team create",
+          org: authCtx.orgName ?? authCtx.orgId,
+          apiUrl: authCtx.apiUrl,
+        });
       }
     });
 }

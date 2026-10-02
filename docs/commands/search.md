@@ -24,6 +24,7 @@ spec0 search <query> [options]
 | `--org <uuid>` | Org id override |  |
 | `--public` | Reserved — public registry search uses same backend when enabled |  |
 | `--max-results <n>` | Max results | `10` |
+| `--verbose` | Print HTTP request/response traces to stderr |  |
 
 ## Exit codes
 

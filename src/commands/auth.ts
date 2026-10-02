@@ -1,23 +1,27 @@
 /**
- * spec0 auth login | logout | status | token | switch
+ * spec0 auth login | logout | status | token
+ *
+ * Single-org model: `login` replaces the stored org (see config.replaceSoleOrg),
+ * so there is no multi-org `switch`. Point at another backend for testing with
+ * the SPEC0_API_URL / SPEC0_APP_URL env vars.
  */
 
 import { Command } from "commander";
 import chalk from "chalk";
 import { createServer } from "http";
-import { randomBytes } from "crypto";
 import open from "open";
-import {
-  getConfig,
-  getDefaultOrgId,
-  getOrgConfig,
-  setOrgConfig,
-  setDefaultOrg,
-  clearConfig,
-} from "../lib/config.js";
+import { PublicOrgsService } from "@spec0/sdk-public-platform";
+import { getDefaultOrgId, getOrgConfig, replaceSoleOrg, clearConfig } from "../lib/config.js";
 import { resolveOrgContext } from "../lib/auth-context.js";
+import { configureSdkAuth, errorStatusCode, extractErrorMessage } from "../lib/api-client.js";
 import { resolvedPlatformAppUrl, resolvedPlatformApiUrl } from "../lib/platform-defaults.js";
-import { ExitCode, exit } from "../lib/exit-codes.js";
+import { ExitCode, exit, exitCodeForHttpStatus } from "../lib/exit-codes.js";
+import {
+  buildLoginUrl,
+  generateLoginState,
+  parseLoginCallback,
+  type LoginCallbackResult,
+} from "../lib/browser-login.js";
 
 function getAppUrl(): string {
   return resolvedPlatformAppUrl();
@@ -64,24 +68,18 @@ export function registerAuthCommands(program: Command) {
     .option("--api-url <url>", "Backend API base (overrides SPEC0_API_URL)")
     .action(async (opts: { appUrl?: string; apiUrl?: string }) => {
       const appUrl = opts.appUrl ?? getAppUrl();
-      const state = randomBytes(16).toString("hex");
+      const state = generateLoginState();
       const port = 38473 + (Math.floor(Math.random() * 1000) % 1000);
       const redirectUri = `http://127.0.0.1:${port}/callback`;
 
-      const authUrl = new URL("/cli-auth", appUrl);
-      authUrl.searchParams.set("state", state);
-      authUrl.searchParams.set("redirect_uri", redirectUri);
+      const authUrl = buildLoginUrl(appUrl, state, redirectUri);
 
       console.log(chalk.blue("Opening browser for authentication..."));
       console.log(chalk.gray(`If the browser doesn't open, visit: ${authUrl.toString()}`));
 
-      const result = await new Promise<
-        { token: string; orgId: string; orgName: string } | { error: string }
-      >((resolve) => {
+      const result = await new Promise<LoginCallbackResult>((resolve) => {
         let resolved = false;
-        const doResolve = (
-          r: { token: string; orgId: string; orgName: string } | { error: string },
-        ) => {
+        const doResolve = (r: LoginCallbackResult) => {
           if (resolved) return;
           resolved = true;
           resolve(r);
@@ -90,20 +88,20 @@ export function registerAuthCommands(program: Command) {
         const server = createServer((req, res) => {
           const url = new URL(req.url ?? "/", `http://127.0.0.1:${port}`);
           if (url.pathname === "/callback") {
-            const token = url.searchParams.get("token");
-            const orgId = url.searchParams.get("org");
-            const orgName = url.searchParams.get("org_name") ?? "default";
-            if (token && orgId) {
+            const callback = parseLoginCallback(url.searchParams, state);
+            if (callback.kind === "success") {
               res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
               res.end(
                 `<!DOCTYPE html><html><head><title>Spec0 CLI</title></head><body><p style="font-family:sans-serif;padding:2rem;">Authorization complete. You can close this window and return to the terminal.</p></body></html>`,
               );
-              doResolve({ token, orgId, orgName });
+            } else if (callback.kind === "cancelled") {
+              res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
+              res.end("Sign-in cancelled. You can close this window.");
             } else {
-              res.writeHead(400, { "Content-Type": "text/plain" });
-              res.end("Missing token or org. Please try again.");
-              doResolve({ error: "Missing token or org" });
+              res.writeHead(400, { "Content-Type": "text/plain; charset=utf-8" });
+              res.end(`${callback.message}\n`);
             }
+            doResolve(callback);
           } else {
             res.writeHead(404);
             res.end();
@@ -116,14 +114,15 @@ export function registerAuthCommands(program: Command) {
         });
 
         server.on("error", (err) => {
-          doResolve({ error: err.message });
+          doResolve({ kind: "error", message: err.message });
         });
 
         const timeout = setTimeout(() => {
           if (!resolved && server.listening) {
             server.close();
             doResolve({
-              error:
+              kind: "error",
+              message:
                 "Login timed out. Run 'spec0 auth login' again, or set SPEC0_TOKEN and SPEC0_ORG_ID for non-interactive use.",
             });
           }
@@ -131,8 +130,12 @@ export function registerAuthCommands(program: Command) {
         server.on("close", () => clearTimeout(timeout));
       });
 
-      if ("error" in result) {
-        console.error(chalk.red(result.error));
+      if (result.kind === "cancelled") {
+        console.error(chalk.yellow("Sign-in cancelled."));
+        exit(ExitCode.GENERIC);
+      }
+      if (result.kind === "error") {
+        console.error(chalk.red(result.message));
         // Login-flow failed mid-way (browser closed, timeout, port error). Not
         // "no creds" — the user tried to authenticate and the flow couldn't
         // complete. Treat as generic failure; callers see a non-zero exit.
@@ -143,16 +146,48 @@ export function registerAuthCommands(program: Command) {
       const apiUrlForStore = opts.apiUrl?.trim()
         ? opts.apiUrl.trim().replace(/\/$/, "")
         : getApiUrl();
-      setOrgConfig(result.orgId, {
+      // Single-org model: the org you just authenticated becomes the one and
+      // only active org. Replacing (not merging) prevents a stale prior login —
+      // e.g. an old localhost entry — from remaining the silent default and
+      // making every later command fail against a dead host.
+      replaceSoleOrg(result.orgId, {
         apiKey: result.token,
         name: result.orgName,
         apiUrl: apiUrlForStore,
         keyName,
       });
-      const config = getConfig();
-      if (!config.defaultOrg) {
-        setDefaultOrg(result.orgId);
+
+      // Verify the stored credentials actually reach the platform before
+      // reporting success. The browser redirect only proves the user authorised
+      // the CLI; it does not prove the token + API base are usable. One
+      // lightweight authenticated call turns a later opaque "api list failed:
+      // Not Found" into an explicit, actionable error at login time.
+      configureSdkAuth({
+        orgId: result.orgId,
+        apiKey: result.token,
+        apiUrl: apiUrlForStore,
+        orgName: result.orgName,
+      });
+      try {
+        await PublicOrgsService.getOrgSummary();
+      } catch (err) {
+        const status = errorStatusCode(err);
+        const detail = extractErrorMessage(err) ?? (err as Error).message;
+        console.error(
+          chalk.red(
+            `Logged in, but could not reach the platform at ${apiUrlForStore}` +
+              (status ? ` (HTTP ${status})` : "") +
+              `: ${detail}`,
+          ),
+        );
+        console.error(
+          chalk.gray(
+            "Credentials were saved. Retry 'spec0 auth login', or set SPEC0_API_URL to a reachable backend.",
+          ),
+        );
+        exit(exitCodeForHttpStatus(status));
       }
+
       console.log(chalk.green("Logged in successfully."));
       console.log(`  Org: ${result.orgName}`);
       console.log(`  API: ${apiUrlForStore}`);
@@ -181,19 +216,5 @@ export function registerAuthCommands(program: Command) {
       const org = getOrgConfig(defaultOrgId);
       if (!org) exit(ExitCode.AUTH_MISSING);
       console.log(org.apiKey);
-    });
-
-  auth
-    .command("switch <org-name>")
-    .description("Switch default org")
-    .action(async (orgName: string) => {
-      const config = getConfig();
-      const entry = Object.entries(config.orgs).find(([, o]) => o.name === orgName);
-      if (!entry) {
-        console.error(chalk.red(`Org '${orgName}' not found.`));
-        exit(ExitCode.NOT_FOUND);
-      }
-      setDefaultOrg(entry[0]);
-      console.log(chalk.green(`Switched to org: ${orgName}`));
     });
 }

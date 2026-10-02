@@ -72,6 +72,7 @@ function usageExamples(cmd: string): string {
     `  spec0 ${cmd} openapi.yaml --name payment-api`,
     `  spec0 ${cmd} openapi.yaml --name payment-api --team platform-team`,
     `  spec0 ${cmd} openapi.yaml --semver`,
+    `  spec0 ${cmd} openapi.yaml --env staging`,
     `  spec0 ${cmd} openapi.yaml --version 1.2.0 --git-sha $(git rev-parse HEAD)`,
   ].join("\n");
 }
@@ -206,7 +207,11 @@ async function runPush(
 
   // ── API call ─────────────────────────────────────────────────────────────
   configureSdkAuth(ctx);
-  const body: TeamPublishRequestV1 = {
+  const environment = (opts["env"] as string | undefined)?.trim() || undefined;
+  // `environment` is a forward-compatible field on the publish request: when set, the platform
+  // advances that environment's current version to this publish. Declared via an intersection until
+  // the published SDK type carries it; the request body is sent verbatim either way.
+  const body: TeamPublishRequestV1 & { environment?: string } = {
     apiId,
     name: resolvedName ?? undefined,
     team: team || undefined,
@@ -217,11 +222,12 @@ async function runPush(
     githubBranch: githubBranch || undefined,
     specFilePath,
     semver,
+    environment,
   };
 
   vLog(`POST ${ctx.apiUrl}/api/v1/public/apis/team`);
   vLog(
-    `payload: name=${resolvedName} team=${team ?? "(unassigned)"} version=${versionOpt ?? "(from spec)"} sha=${gitSha ? gitSha.slice(0, 8) + "…" : "none"} semver=${semver}`,
+    `payload: name=${resolvedName} team=${team ?? "(unassigned)"} version=${versionOpt ?? "(from spec)"} sha=${gitSha ? gitSha.slice(0, 8) + "…" : "none"} semver=${semver} env=${environment ?? "(none)"}`,
   );
 
   const pushSpinner = ora("Pushing…").start();
@@ -251,6 +257,10 @@ async function runPush(
 
     const displayVersion = reg.version ?? versionOpt ?? "?";
     const displayName = reg.apiName ?? resolvedName ?? resolvedApiId;
+    // Non-blocking org governance warnings, surfaced when the org runs governance in warn mode.
+    const governanceWarnings =
+      (reg as { governanceWarnings?: Array<{ section?: string; message?: string }> })
+        .governanceWarnings ?? [];
 
     if (format === "json") {
       console.log(
@@ -267,6 +277,7 @@ async function runPush(
             teamName: reg.teamName ?? null,
             orgSlug: reg.orgSlug ?? null,
             registryUrl: reg.registryUrl ?? null,
+            governanceWarnings,
             specUrl,
             mockUrl: mockUrl ?? null,
           },
@@ -288,6 +299,7 @@ async function runPush(
           versionUnchanged: reg.versionUnchanged,
           versionUnchangedHint: reg.versionUnchangedHint,
           created: reg.created,
+          governanceWarnings,
         }),
       );
     }
@@ -334,6 +346,10 @@ export function registerPushCommand(program: Command) {
     .option("--name <name>", "API name (kebab-case). Defaults to spec filename if omitted.")
     .option("--team <team>", "Team UUID or slug. Defaults to 'Unassigned APIs' if omitted.")
     .option("--version <version>", "Version tag (e.g. 1.2.0). Defaults to info.version in spec.")
+    .option(
+      "--env <environment>",
+      "Target environment (e.g. staging, production). Advances that environment to this published version.",
+    )
     .option("--api-id <id>", "Existing API UUID to update (backward compat; prefer --name)")
     .option("--semver", "Auto-compute next semver via oasdiff diff classification")
     .option("--git-sha <sha>", "Git commit SHA (auto-detected if .git is present)")

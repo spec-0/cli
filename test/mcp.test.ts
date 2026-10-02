@@ -52,17 +52,11 @@ function run(args: string[], env: Record<string, string | undefined> = {}) {
   });
 }
 
-/** Auth env that satisfies `requireAuthOrExit` without needing a stored config. */
-const AUTHED_ENV = {
-  SPEC0_TOKEN: "test-token",
-  SPEC0_ORG_ID: "00000000-0000-0000-0000-000000000000",
-};
-
 const cursorConfigPath = () => join(testHome, ".cursor", "mcp.json");
 
 describe("spec0 mcp install --client cursor", () => {
-  it("writes a valid ~/.cursor/mcp.json with the canonical url + Authorization header", () => {
-    const r = run(["mcp", "install", "--client", "cursor"], AUTHED_ENV);
+  it("writes a valid ~/.cursor/mcp.json with the canonical url and NO Authorization header", () => {
+    const r = run(["mcp", "install", "--client", "cursor"]);
     expect(r.status).toBe(0);
 
     const path = cursorConfigPath();
@@ -70,7 +64,8 @@ describe("spec0 mcp install --client cursor", () => {
 
     const config = JSON.parse(readFileSync(path, "utf-8"));
     expect(config.mcpServers.spec0.url).toBe(CANONICAL_MCP_URL);
-    expect(config.mcpServers.spec0.headers.Authorization).toBe("Bearer ${SPEC0_TOKEN}");
+    // A static header would suppress the client's MCP OAuth flow — it must be absent.
+    expect(config.mcpServers.spec0.headers).toBeUndefined();
   });
 
   it("preserves an existing unrelated server already in the file", () => {
@@ -90,7 +85,7 @@ describe("spec0 mcp install --client cursor", () => {
       "utf-8",
     );
 
-    const r = run(["mcp", "install", "--client", "cursor"], AUTHED_ENV);
+    const r = run(["mcp", "install", "--client", "cursor"]);
     expect(r.status).toBe(0);
 
     const config = JSON.parse(readFileSync(path, "utf-8"));
@@ -102,7 +97,6 @@ describe("spec0 mcp install --client cursor", () => {
 
   it("respects SPEC0_MCP_URL override when writing the config", () => {
     const r = run(["mcp", "install", "--client", "cursor"], {
-      ...AUTHED_ENV,
       SPEC0_MCP_URL: "https://staging.spec0.io/mcp",
     });
     expect(r.status).toBe(0);
@@ -110,13 +104,11 @@ describe("spec0 mcp install --client cursor", () => {
     const config = JSON.parse(readFileSync(cursorConfigPath(), "utf-8"));
     expect(config.mcpServers.spec0.url).toBe("https://staging.spec0.io/mcp");
   });
-});
 
-describe("spec0 mcp install — auth", () => {
-  it("exits 3 (AUTH_MISSING) when not authenticated", () => {
-    // No SPEC0_TOKEN / stored config under the empty temp HOME.
+  it("does not require CLI auth — OAuth is performed by the client at connect time", () => {
+    // No SPEC0_TOKEN / stored config under the empty temp HOME: install still succeeds.
     const r = run(["mcp", "install", "--client", "cursor"]);
-    expect(r.status).toBe(3);
-    expect(existsSync(cursorConfigPath())).toBe(false);
+    expect(r.status).toBe(0);
+    expect(existsSync(cursorConfigPath())).toBe(true);
   });
 });

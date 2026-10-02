@@ -25,6 +25,7 @@ spec0 api changelog <ref> [options]
 | `--to <tag>` | Later version tag (default: latest published) |  |
 | `--org <uuid>` | Org id override |  |
 | `--output <format>` | Output format: text, json, markdown, or yaml (default: text) |  |
+| `--verbose` | Print HTTP request/response traces to stderr |  |
 
 ## Exit codes
 

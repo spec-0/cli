@@ -26,6 +26,7 @@
  *   - spec0 push v2      (publishes a second version)
  *   - spec0 api changelog v1 → v2  (structured diff between versions)
  *   - spec0 api show     (details — lean V1 fallback for the team SAT)
+ *   - spec0 mock refresh (rebuilds against a newer spec; id and URL unchanged)
  *   - spec0 mock delete  (CLI-driven teardown; mock disappears from list)
  *   - spec0 api delete   (CLI-driven teardown; API disappears from list)
  *
@@ -362,7 +363,45 @@ describeFn("staging integration: team-scoped CLI lifecycle (pre-seeded team)", (
     expect(out.version).toBe("0.2.0");
   }, 60_000);
 
-  it("step 9 — spec0 api changelog 0.1.0 → 0.2.0 returns a structured diff", () => {
+  it("step 9 — spec0 mock refresh rebuilds against v2, keeping id and URL", () => {
+    // Step 8 published a second version, so the mock is now answering the old
+    // contract. This is the only point in the run where a refresh has anything
+    // to do, which is what makes it worth asserting here rather than in
+    // isolation.
+    const before = runCli(["mock", "url", apiSlug], { env: stagingEnvAsRecord() });
+    expect(before.status).toBe(0);
+
+    const r = runCli(["mock", "refresh", apiSlug, "--output", "json"], {
+      env: stagingEnvAsRecord(),
+    });
+    if (r.status !== 0) {
+      console.error(`[mock refresh] stdout:\n${r.stdout}\n[mock refresh] stderr:\n${r.stderr}`);
+    }
+    expect(r.status).toBe(0);
+
+    const out = JSON.parse(r.stdout) as {
+      mockServerId: string;
+      refreshed: boolean;
+      specVersion: string | null;
+    };
+    expect(out.refreshed).toBe(true);
+    expect(out.specVersion).toBe("0.2.0");
+
+    // The promise the command makes: whatever was pointing at this mock still
+    // works afterwards.
+    const after = runCli(["mock", "url", apiSlug], { env: stagingEnvAsRecord() });
+    expect(after.status).toBe(0);
+    expect(after.stdout.trim()).toBe(before.stdout.trim());
+
+    // Running it again is a no-op rather than a second rebuild.
+    const again = runCli(["mock", "refresh", apiSlug, "--output", "json"], {
+      env: stagingEnvAsRecord(),
+    });
+    expect(again.status).toBe(0);
+    expect((JSON.parse(again.stdout) as { refreshed: boolean }).refreshed).toBe(false);
+  }, 60_000);
+
+  it("step 10 — spec0 api changelog 0.1.0 → 0.2.0 returns a structured diff", () => {
     const r = runCli(
       ["api", "changelog", apiSlug, "--from", "0.1.0", "--to", "0.2.0", "--output", "json"],
       { env: stagingEnvAsRecord() },
@@ -378,7 +417,7 @@ describeFn("staging integration: team-scoped CLI lifecycle (pre-seeded team)", (
     expect(Array.isArray(out.changes)).toBe(true);
   }, 30_000);
 
-  it("step 10 — spec0 api show returns details for the API", () => {
+  it("step 11 — spec0 api show returns details for the API", () => {
     const r = runCli(["api", "show", apiSlug, "--output", "json"], { env: stagingEnvAsRecord() });
     if (r.status !== 0) {
       console.error(`[api show] stdout:\n${r.stdout}\n[api show] stderr:\n${r.stderr}`);
@@ -393,7 +432,7 @@ describeFn("staging integration: team-scoped CLI lifecycle (pre-seeded team)", (
     expect(out.teamName).toBe(teamSlug);
   }, 30_000);
 
-  it("step 11 — spec0 mock delete removes the mock (CLI-driven teardown)", () => {
+  it("step 12 — spec0 mock delete removes the mock (CLI-driven teardown)", () => {
     const r = runCli(["mock", "delete", apiSlug, "--yes"], { env: stagingEnvAsRecord() });
     if (r.status !== 0) {
       console.error(`[mock delete] stdout:\n${r.stdout}\n[mock delete] stderr:\n${r.stderr}`);
@@ -409,7 +448,7 @@ describeFn("staging integration: team-scoped CLI lifecycle (pre-seeded team)", (
     expect(rows.find((row) => row.api === apiSlug)).toBeUndefined();
   }, 30_000);
 
-  it("step 12 — spec0 api delete removes the API (CLI-driven teardown)", () => {
+  it("step 13 — spec0 api delete removes the API (CLI-driven teardown)", () => {
     const r = runCli(["api", "delete", apiSlug, "--yes"], { env: stagingEnvAsRecord() });
     if (r.status !== 0) {
       console.error(`[api delete] stdout:\n${r.stdout}\n[api delete] stderr:\n${r.stderr}`);
