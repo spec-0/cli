@@ -1,0 +1,25 @@
+openapi: 3.0.3
+info:
+  title: Null enum-adjacent nodes
+  version: 1.0.0
+  description: Regression fixture for spec0-cli#55.
+paths:
+  /pages:
+    get:
+      operationId: listPages
+      description: List pages.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [active, inactive]
+              example:
+                status: active
+                previous_page_uri: null
+                next_page_uri: null
