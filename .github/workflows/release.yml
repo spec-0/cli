@@ -24,11 +24,11 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: "20"
+          node-version: "24"
           registry-url: "https://registry.npmjs.org"
           cache: "npm"
 
-      # Trusted publishing requires npm >= 11.5.1; Node 20's bundled npm lags behind.
+      # Trusted publishing requires npm >= 11.5.1; upgrade in case the bundled npm lags behind.
       - name: Upgrade npm CLI
         run: npm install -g npm@latest
 
