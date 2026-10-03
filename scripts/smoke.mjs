@@ -6,7 +6,7 @@
  *   npm run build && node scripts/smoke.mjs
  *   npm run test:smoke
  *
- * Requires: Node 20+, dist/ to be up to date.
+ * Requires: Node 22+, dist/ to be up to date.
  * Does NOT require authentication — all network calls are either skipped (lint) or expected to fail.
  */
 
