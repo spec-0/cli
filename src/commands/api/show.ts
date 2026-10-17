@@ -3,8 +3,10 @@
  *
  * Prefers the rich internal GET /apis/{apiId}/summary (operations, env configs,
  * subscriber count). A team/public principal (e.g. a SAT) isn't entitled to
- * that endpoint (403) and some ids aren't present there (404), so it falls back
- * to the leaner V1 team-API row, which the same principal can read.
+ * that endpoint and some ids aren't present there (404), so it falls back to
+ * the leaner V1 team-API row, which the same principal can read. The internal
+ * surface doesn't recognise SAT credentials, so it may refuse one with 401
+ * rather than 403 — the V1 call is the authoritative token check.
  * Resolves <ref> via ref-resolver: accepts <org>/<api>, bare <api>, or a UUID.
  */
 
@@ -110,17 +112,19 @@ export function registerApiShowCommand(api: Command) {
         const res = (await client.getJson(`/apis/${apiId}/summary`)) as ApiSummaryResponse;
         summary = res.api;
       } catch (err) {
-        if (is401(err)) {
-          fail(outCtx, ExitCode.AUTH_MISSING, "Token invalid or expired.", {
-            hint: "Run 'spec0 auth login' or refresh SPEC0_TOKEN.",
-          });
-        }
-        // 403 (principal not entitled to the internal summary) or 404 (id not
-        // on that surface) → fall back to the leaner V1 team-API row. Other
+        // 401/403 (principal not entitled to the internal summary) or 404 (id
+        // not on that surface) → fall back to the leaner V1 team-API row. Other
         // statuses map to the stable exit code (5xx → SERVER_ERROR, …).
         const status = errorStatusCode(err);
-        if (status === 403 || status === 404) {
-          summary = await leanSummaryFromList(apiId, parsed);
+        if (status === 401 || status === 403 || status === 404) {
+          try {
+            summary = await leanSummaryFromList(apiId, parsed);
+          } catch {
+            // V1 rejected the token too (401), so it really is invalid or expired.
+            fail(outCtx, ExitCode.AUTH_MISSING, "Token invalid or expired.", {
+              hint: "Run 'spec0 auth login' or refresh SPEC0_TOKEN.",
+            });
+          }
           if (summary) {
             progress(
               outCtx,
@@ -149,17 +153,19 @@ export function registerApiShowCommand(api: Command) {
 
 /**
  * Build a lean ApiSummary from the V1 team-API list, used when the rich
- * internal summary is unavailable to the caller (e.g. a team SAT → 403).
+ * internal summary is unavailable to the caller (e.g. a team SAT → 401/403).
  * Matches on the resolved id first, then the name for a `<org>/<api>` ref.
+ * Rethrows a 401 so the caller can report a bad token instead of "not found".
  */
-async function leanSummaryFromList(
+export async function leanSummaryFromList(
   apiId: string,
   ref: ResolvedRef,
 ): Promise<ApiSummary | undefined> {
   let rows: Awaited<ReturnType<typeof PublicApisService.listTeamApis>>;
   try {
     rows = await PublicApisService.listTeamApis();
-  } catch {
+  } catch (err) {
+    if (is401(err)) throw err;
     // The fallback list is itself unavailable (e.g. an org-key principal has no
     // team → 404). Degrade to "not found" rather than crashing.
     return undefined;
