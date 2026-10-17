@@ -17,6 +17,10 @@ updates:
       # what we use. Skip suggestion noise to roll back to chalk@4.
       - dependency-name: chalk
         versions: ["<5"]
+      # TypeScript 7 (native compiler) is not yet supported by ts-jest /
+      # typescript-eslint. Revisit once both declare support for it.
+      - dependency-name: typescript
+        versions: [">=7"]
 
   - package-ecosystem: github-actions
     directory: /
