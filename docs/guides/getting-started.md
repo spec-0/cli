@@ -4,7 +4,7 @@ From zero to a published API in one terminal session.
 
 ## Prerequisites
 
-- Node 22+
+- Node 22.12+
 - An OpenAPI spec (YAML or JSON) — any example works; a trivial `openapi.yaml` in this guide.
 
 ## Install
