@@ -1,6 +1,6 @@
 {
   "name": "@spec0/cli",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "description": "Spec0 CLI — publish API specs, create mock servers, lint, and interact with the Spec0 platform",
   "main": "dist/index.js",
   "bin": {
