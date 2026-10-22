@@ -4,7 +4,7 @@ This repository is the **Node.js** CLI (`@spec0/cli`).
 
 ## Environment
 
-- **Node:** `>=20` (see `package.json` `engines`).
+- **Node:** `>=22` (see `package.json` `engines`).
 - **Install deps:** `npm ci` (CI) or `npm install` (local).
 
 ## Use the CLI locally before pushing (global `spec0`)

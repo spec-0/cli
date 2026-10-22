@@ -7,7 +7,7 @@ npm install -g @spec0/cli
 spec0 --version
 ```
 
-Requires **Node.js 20+**.
+Requires **Node.js 22+**.
 
 ---
 

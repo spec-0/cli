@@ -10,7 +10,7 @@ Thanks for your interest in `@spec0/cli`. This is a source-available, actively m
 
 ## Local development
 
-Requires Node 20 or 22.
+Requires Node 22 or 24.
 
 ```bash
 npm install
