@@ -21,6 +21,10 @@ updates:
       # typescript-eslint. Revisit once both declare support for it.
       - dependency-name: typescript
         versions: [">=7"]
+      # @types/node tracks the minimum supported runtime (engines.node), not
+      # the newest Node. Bump its major together with the engines floor.
+      - dependency-name: "@types/node"
+        update-types: [version-update:semver-major]
 
   - package-ecosystem: github-actions
     directory: /
